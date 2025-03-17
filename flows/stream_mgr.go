@@ -2,6 +2,9 @@ package flows
 
 import (
 	"context"
+	"log"
+
+	"hj-flows/utils"
 
 	"github.com/go-pay/errgroup"
 )
@@ -48,19 +51,26 @@ func WithTopic(gourpId, topic string, f func(*Stream)) Option {
 		if _, ok := m.streams[topic]; ok {
 			panic("topic already registered: " + topic)
 		}
-		s := &Stream{f: f, c: make(chan [][]byte, 128)}
+		log.Println("WithTopic", topic)
+		s := &Stream{f: f, c: make(chan [][]byte, 128), streamMgr: m, gourpId: gourpId}
 		if m.kafkaConfig != nil {
-			s.gourpId = gourpId
 			s.reader = NewKafkaReader(m.kafkaConfig, gourpId, topic)
 		}
 		m.streams[topic] = s
 	}
 }
 
+func (m *StreamMgr) GetStream(topic string) *Stream {
+	return m.streams[topic]
+}
+
 // Start 启动所有的流
 func (m *StreamMgr) Start() {
 	for _, stream := range m.streams {
 		m.wg.Go(func(ctx context.Context) error {
+			if utils.IsNil(stream.reader) {
+				return nil
+			}
 			for {
 				buffs, err := stream.reader.Read(m.ctx)
 				if err != nil {

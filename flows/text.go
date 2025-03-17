@@ -1,89 +1,28 @@
 package flows
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"hj-flows/utils"
 )
 
-func StructToBytes(s any) []byte {
-	var buffer bytes.Buffer
-	v := reflect.ValueOf(s)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	arr := make([]string, 0, v.NumField())
-	for i := 0; i < v.NumField(); i++ {
-		if v.Field(i).Kind() == reflect.String {
-			arr = append(arr, v.String())
-		} else {
-			arr = append(arr, fmt.Sprintf("%v", v.Field(i).Interface()))
-		}
-	}
-	n := 2
+func UnMarshalBytes[T any](arr [][]byte) ([]*T, []string, error) {
+	strs := []string{}
 	for _, v := range arr {
-		n += len(v) + 2
+		strs = append(strs, utils.B2s(v))
 	}
-	buffer.Grow(n)
-	arrLen := uint16(len(arr))
-	buffer.Write([]byte{byte(arrLen & 0xFF), byte(arrLen >> 8 & 0xFF)})
-	// binary.Write(&buffer, binary.BigEndian, uint16(len(arr)))
-	for _, v := range arr {
-		vLen := uint16(len(v))
-		buffer.Write([]byte{byte(vLen & 0xFF), byte(vLen >> 8 & 0xFF)})
-		// binary.Write(&buffer, binary.BigEndian, uint16(len(v)))
-		if len(v) > 0 {
-			buffer.WriteString(v)
-		}
-	}
-	return buffer.Bytes()
+	return UnMarshal[T](strs)
 }
 
-func MarshalBytes(i any) [][]byte {
-	var arr [][]byte
-	if i == nil {
-		return arr
-	}
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Slice, reflect.Array:
-		slice := reflect.ValueOf(i)
-		if slice.Len() == 0 {
-			return arr
-		}
-		arr = make([][]byte, 0, slice.Len())
-		for i := 0; i < slice.Len(); i++ {
-			arr = append(arr, StructToBytes(slice.Index(i).Interface()))
-		}
-	default:
-		arr = make([][]byte, 0, 1)
-		arr = append(arr, StructToBytes(i))
-	}
-	return arr
-}
-
-// splitBytes 将字节数组, 按照2字节长度+数据的方式, 分割成多个字节数组
-func splitBytes(data []byte) [][]byte {
-	n := binary.BigEndian.Uint16(data)
-	ret := make([][]byte, 0, n)
-	index := 2
-	for i := 0; i < int(n); i++ {
-		dataLen := binary.BigEndian.Uint16(data[i:])
-		ret = append(ret, data[index+2:index+2+int(dataLen)])
-		i += 2 + int(dataLen)
-	}
-	return ret
-}
-
-func UnMarshalBytes[T any](arr [][]byte) ([]*T, [][]byte, error) {
+func UnMarshal[T any](arr []string) ([]*T, []string, error) {
 	slice := []*T{}
-	dirty := [][]byte{}
+	dirty := []string{}
 
 	// r := reflect.TypeOf(t)
-	for _, data := range arr {
+	for _, str := range arr {
 		t := new(T)
 		elem := reflect.ValueOf(t)
 		if reflect.TypeOf(t).Kind() == reflect.Ptr {
@@ -91,22 +30,21 @@ func UnMarshalBytes[T any](arr [][]byte) ([]*T, [][]byte, error) {
 		}
 
 		ok := true
-		fieldArrs := splitBytes(data)
+		fieldArrs := strings.Split(str, ";")
 		for i := 0; i < elem.NumField(); i++ {
 			if i >= len(fieldArrs) {
 				break
 			}
-			s := utils.B2s(fieldArrs[i])
 			// 判断类型 float64, int64, uint64, string
 			// 如果类型是 string, 则直接赋值
 			kind := elem.Field(i).Type().Kind()
 			switch kind {
 			case reflect.Float64, reflect.Float32:
-				if s == "" {
+				if fieldArrs[i] == "" {
 					elem.Field(i).SetFloat(0)
 					break
 				}
-				f, err := strconv.ParseFloat(s, 64)
+				f, err := strconv.ParseFloat(fieldArrs[i], 64)
 				if err != nil {
 					ok = false
 					break
@@ -114,11 +52,11 @@ func UnMarshalBytes[T any](arr [][]byte) ([]*T, [][]byte, error) {
 				}
 				elem.Field(i).SetFloat(f)
 			case reflect.Int64, reflect.Int32:
-				if s == "" {
+				if fieldArrs[i] == "" {
 					elem.Field(i).SetInt(0)
 					break
 				}
-				f, err := strconv.ParseInt(s, 10, 64)
+				f, err := strconv.ParseInt(fieldArrs[i], 10, 64)
 				if err != nil {
 					ok = false
 					break
@@ -126,12 +64,12 @@ func UnMarshalBytes[T any](arr [][]byte) ([]*T, [][]byte, error) {
 				}
 				elem.Field(i).SetInt(f)
 			case reflect.Uint64, reflect.Uint32:
-				if s == "" {
+				if fieldArrs[i] == "" {
 					elem.Field(i).SetUint(0)
 					break
 				}
 
-				f, err := strconv.ParseUint(s, 10, 64)
+				f, err := strconv.ParseUint(fieldArrs[i], 10, 64)
 				if err != nil {
 					ok = false
 					break
@@ -139,16 +77,162 @@ func UnMarshalBytes[T any](arr [][]byte) ([]*T, [][]byte, error) {
 				}
 				elem.Field(i).SetUint(f)
 			case reflect.String:
-				elem.Field(i).SetString(s)
+				elem.Field(i).SetString(fieldArrs[i])
 			}
 		}
 
 		if ok {
 			slice = append(slice, t)
 		} else {
-			dirty = append(dirty, data)
+			dirty = append(dirty, str)
 		}
 	}
 
 	return slice, dirty, nil
+}
+
+func StructToString(s interface{}) string {
+	v := reflect.ValueOf(s)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	var arr []string
+	for i := 0; i < v.NumField(); i++ {
+		arr = append(arr, fmt.Sprintf("%v", v.Field(i).Interface()))
+	}
+	return strings.Join(arr, ";")
+}
+
+func MarshalBytes(i any) [][]byte {
+	strs := Marshal(i)
+	ret := make([][]byte, len(strs))
+	for i, v := range strs {
+		ret[i] = utils.S2b(v)
+	}
+	return ret
+}
+
+func Marshal(i any) []string {
+	var arr []string
+	if i == nil {
+		return arr
+	}
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Slice, reflect.Array:
+		slice := reflect.ValueOf(i)
+		for i := 0; i < slice.Len(); i++ {
+			arr = append(arr, StructToString(slice.Index(i).Interface()))
+		}
+	default:
+		arr = append(arr, StructToString(i))
+	}
+	return arr
+}
+
+func StructToValue(i interface{}) string {
+	v := reflect.ValueOf(i)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	var arr []string
+	for i := 0; i < v.NumField(); i++ {
+		switch v.Field(i).Type().Kind() {
+		case reflect.String:
+			arr = append(arr, "'"+v.Field(i).Interface().(string)+"'")
+		default:
+			arr = append(arr, fmt.Sprintf("%v", v.Field(i).Interface()))
+		}
+	}
+	return "(" + strings.Join(arr, ",") + ")"
+}
+
+func MarshalValues(i any) []string {
+	var arr []string
+	switch reflect.TypeOf(i).Kind() {
+	case reflect.Slice, reflect.Array:
+		slice := reflect.ValueOf(i)
+		for i := 0; i < slice.Len(); i++ {
+			arr = append(arr, StructToValue(slice.Index(i).Interface()))
+		}
+	default:
+		arr = append(arr, StructToValue(i))
+	}
+	return arr
+}
+
+type Model interface {
+	TableName() string
+}
+
+const (
+	sqlInsertStr = "INSERT INTO "
+	sqlValueStr  = ") VALUES "
+)
+
+// StructToInsertSql 生成批量插入sql，注意指针必须都设置
+func StructToInsertSql(dbName string, models []Model) string {
+	if len(models) == 0 {
+		return ""
+	}
+
+	var valuess, fields []string
+	for i0, model := range models {
+		v := reflect.ValueOf(model)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		var values []string
+		for i := 0; i < v.NumField(); i++ {
+			dbTag := v.Type().Field(i).Tag.Get("db")
+			if dbTag == "" || dbTag == "-" {
+				continue
+			}
+			if i0 == 0 {
+				fields = append(fields, "`"+dbTag+"`")
+			}
+
+			// 判断是否为空
+			if v.Field(i).Type().Kind() == reflect.Ptr && v.Field(i).IsNil() {
+				values = append(values, "NULL")
+				continue
+			}
+
+			//
+			elem := v.Field(i)
+			if v.Field(i).Type().Kind() == reflect.Ptr {
+				elem = elem.Elem()
+			}
+			switch elem.Type().Kind() {
+			case reflect.String:
+				values = append(values, "'"+elem.Interface().(string)+"'")
+			default:
+				values = append(values, fmt.Sprintf("%v", elem.Interface()))
+			}
+		}
+		valuess = append(valuess, "("+strings.Join(values, ",")+")")
+	}
+	filedStr := strings.Join(fields, ",")
+	valuesStr := strings.Join(valuess, ",")
+
+	var buff strings.Builder
+	// 计算sql长度
+	size := len(sqlInsertStr) + len(models[0].TableName()) + 1 + len(filedStr) + len(sqlValueStr) + len(valuesStr) + 1
+	if dbName != "" {
+		size += len(dbName) + 1
+	}
+	buff.Grow(size)
+
+	// 拼接sql
+	buff.WriteString(sqlInsertStr)
+	if dbName != "" {
+		buff.WriteString(dbName)
+		buff.WriteString(".")
+	}
+	buff.WriteString(models[0].TableName())
+	buff.WriteString("(")
+	buff.WriteString(filedStr)
+	buff.WriteString(sqlValueStr)
+	buff.WriteString(valuesStr)
+	buff.WriteString(";")
+	return buff.String()
 }

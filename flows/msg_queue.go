@@ -8,7 +8,7 @@ import (
 )
 
 type Writer interface {
-	Write(context.Context, string, []byte)
+	Write(context.Context, string, [][]byte)
 }
 type Reader interface {
 	Read(context.Context) ([][]byte, error)
@@ -65,10 +65,12 @@ func (w *KafkaWriter) write(force bool) {
 	}
 }
 
-func (w *KafkaWriter) Write(ctx context.Context, topic string, b []byte) {
-	w.c <- &kafka.Message{
-		Topic: topic,
-		Value: b,
+func (w *KafkaWriter) Write(ctx context.Context, topic string, bs [][]byte) {
+	for _, v := range bs {
+		w.c <- &kafka.Message{
+			Topic: topic,
+			Value: v,
+		}
 	}
 }
 

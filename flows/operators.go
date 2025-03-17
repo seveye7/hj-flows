@@ -2,7 +2,7 @@ package flows
 
 // Filter 输入一个元素同时输出一个bool值为每个元素执行一个布尔 function，并保留那些 function 输出值为 true 的元素。
 func Filter[T any](s *Stream, f func(*T) bool) *Stream {
-	newStream := &Stream{}
+	newStream := &Stream{streamMgr: s.streamMgr}
 	data, _, _ := UnMarshalBytes[T](s.buffs)
 	for _, v := range data {
 		if f(v) {
@@ -14,7 +14,7 @@ func Filter[T any](s *Stream, f func(*T) bool) *Stream {
 
 // Map 输入一个元素同时输出一个元素
 func Map[T1 any, T2 any](s *Stream, f func(*T1) *T2) *Stream {
-	newStream := &Stream{}
+	newStream := &Stream{streamMgr: s.streamMgr}
 	data, _, _ := UnMarshalBytes[T1](s.buffs)
 	for _, v := range data {
 		newStream.buffs = append(newStream.buffs, MarshalBytes(f(v))...)
@@ -24,7 +24,7 @@ func Map[T1 any, T2 any](s *Stream, f func(*T1) *T2) *Stream {
 
 // FlatMap 输入一个元素同时产生零个、一个或多个元素
 func FlatMap[T1 any, T2 any](s *Stream, f func(*T1) []*T2) *Stream {
-	newStream := &Stream{}
+	newStream := &Stream{streamMgr: s.streamMgr}
 	data, _, _ := UnMarshalBytes[T1](s.buffs)
 	for _, v := range data {
 		newStream.buffs = append(newStream.buffs, MarshalBytes(f(v))...)
@@ -48,7 +48,7 @@ func KeyBy[T any](s *Stream, f func(*T) int, n int) []*Stream {
 
 // Reduce 在相同 key 的数据流上“滚动”执行 reduce。将当前元素与最后一次 reduce 得到的值组合然后输出新值。
 func Reduce[T any](s *Stream, f func(*T, *T) *T) *Stream {
-	newStream := &Stream{}
+	newStream := &Stream{streamMgr: s.streamMgr}
 	data, _, _ := UnMarshalBytes[T](s.buffs)
 	result := data[0]
 	for i := 1; i < len(data); i++ {
@@ -60,7 +60,7 @@ func Reduce[T any](s *Stream, f func(*T, *T) *T) *Stream {
 
 // Union 将两个或多个数据流联合来创建一个包含所有流中数据的新流。注意：如果一个数据流和自身进行联合，这个流中的每个数据将在合并后的流中出现两次。
 func Union[T any](ss ...*Stream) *Stream {
-	newStream := &Stream{}
+	newStream := &Stream{streamMgr: ss[0].streamMgr}
 	for _, v := range ss {
 		newStream.buffs = append(newStream.buffs, v.buffs...)
 	}
