@@ -48,6 +48,7 @@ func WithKafka(config *KafkaConfig) Option {
 // WithTopic 注册topic和流处理函数
 func WithTopic(gourpId, topic string, f func(*Stream)) Option {
 	return func(m *StreamMgr) {
+		// TODO: 支持同时注册一个topic，groupI不一样
 		if _, ok := m.streams[topic]; ok {
 			panic("topic already registered: " + topic)
 		}

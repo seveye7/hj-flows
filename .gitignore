@@ -1,2 +1,3 @@
-example/*.log
-example/example
+example/stream/*.log
+example/stream/stream
+.DS_Store
