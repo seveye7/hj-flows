@@ -28,14 +28,6 @@ func main() {
 		RegisterDay: 1,
 		CreateAt:    time.Now().Format(time.DateTime),
 	})
-	// time.Sleep(time.Second * 2)
-	// mgr.GetStream("client").SendMessage(&Client{
-	// 	Date:        "2024-01-01",
-	// 	Uid:         1001,
-	// 	Eventid:     1202,
-	// 	RegisterDay: 1,
-	// 	CreateAt:    time.Now().Format(time.DateTime),
-	// })
 
 	time.Sleep(time.Hour)
 }

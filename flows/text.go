@@ -9,12 +9,75 @@ import (
 	"hj-flows/utils"
 )
 
+func MarshalBytes(i any) [][]byte {
+	strs := Marshal(i)
+	ret := make([][]byte, len(strs))
+	for i, v := range strs {
+		ret[i] = utils.S2b(v)
+	}
+	return ret
+}
+
 func UnMarshalBytes[T any](arr [][]byte) ([]*T, []string, error) {
 	strs := []string{}
 	for _, v := range arr {
 		strs = append(strs, utils.B2s(v))
 	}
 	return UnMarshal[T](strs)
+}
+
+func parseElem(elem reflect.Value, i int, fieldStr string) bool {
+	field := elem.Field(i)
+	kind := field.Type().Kind()
+	isPtr := kind == reflect.Ptr
+	if isPtr {
+		// 空不赋值，*string也是空指针
+		if fieldStr == "" || fieldStr == "nil" {
+			return true
+		}
+		// new
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+		kind = field.Elem().Type().Kind()
+		field = field.Elem()
+	}
+	switch kind {
+	case reflect.Float64, reflect.Float32:
+		if fieldStr == "" {
+			elem.Field(i).SetFloat(0)
+			break
+		}
+		f, err := strconv.ParseFloat(fieldStr, 64)
+		if err != nil {
+			return false
+		}
+		field.SetFloat(f)
+	case reflect.Int64, reflect.Int32:
+		if fieldStr == "" {
+			field.SetInt(0)
+		}
+		f, err := strconv.ParseInt(fieldStr, 10, 64)
+		if err != nil {
+			return false
+		}
+
+		field.SetInt(f)
+	case reflect.Uint64, reflect.Uint32:
+		if fieldStr == "" {
+			field.SetUint(0)
+		}
+
+		f, err := strconv.ParseUint(fieldStr, 10, 64)
+		if err != nil {
+			return false
+			// return reflect.Value{}, fmt.Errorf("parse uint64 error: %v", err)
+		}
+		field.SetUint(f)
+	case reflect.String:
+		field.SetString(fieldStr)
+	}
+	return true
 }
 
 func UnMarshal[T any](arr []string) ([]*T, []string, error) {
@@ -31,54 +94,32 @@ func UnMarshal[T any](arr []string) ([]*T, []string, error) {
 
 		ok := true
 		fieldArrs := strings.Split(str, ";")
-		for i := 0; i < elem.NumField(); i++ {
-			if i >= len(fieldArrs) {
+		start := 0
+		n := 1
+		if elem.Type().Field(0).Anonymous {
+			for i := 0; i < elem.Field(0).NumField(); i++ {
+				if i >= len(fieldArrs) {
+					break
+				}
+				if !parseElem(elem.Field(0), i, fieldArrs[i]) {
+					ok = false
+					break
+				}
+			}
+			start = 1
+			n = elem.Field(0).NumField()
+		}
+		if !ok {
+			dirty = append(dirty, str)
+			continue
+		}
+		for i := start; i < elem.NumField(); i++ {
+			if i+n > len(fieldArrs) {
 				break
 			}
 			// 判断类型 float64, int64, uint64, string
 			// 如果类型是 string, 则直接赋值
-			kind := elem.Field(i).Type().Kind()
-			switch kind {
-			case reflect.Float64, reflect.Float32:
-				if fieldArrs[i] == "" {
-					elem.Field(i).SetFloat(0)
-					break
-				}
-				f, err := strconv.ParseFloat(fieldArrs[i], 64)
-				if err != nil {
-					ok = false
-					break
-					// return reflect.Value{}, fmt.Errorf("parse float64 error: %v", err)
-				}
-				elem.Field(i).SetFloat(f)
-			case reflect.Int64, reflect.Int32:
-				if fieldArrs[i] == "" {
-					elem.Field(i).SetInt(0)
-					break
-				}
-				f, err := strconv.ParseInt(fieldArrs[i], 10, 64)
-				if err != nil {
-					ok = false
-					break
-					// return reflect.Value{}, fmt.Errorf("parse int64 error: %v", err)
-				}
-				elem.Field(i).SetInt(f)
-			case reflect.Uint64, reflect.Uint32:
-				if fieldArrs[i] == "" {
-					elem.Field(i).SetUint(0)
-					break
-				}
-
-				f, err := strconv.ParseUint(fieldArrs[i], 10, 64)
-				if err != nil {
-					ok = false
-					break
-					// return reflect.Value{}, fmt.Errorf("parse uint64 error: %v", err)
-				}
-				elem.Field(i).SetUint(f)
-			case reflect.String:
-				elem.Field(i).SetString(fieldArrs[i])
-			}
+			parseElem(elem, i, fieldArrs[i+n-1])
 		}
 
 		if ok {
@@ -93,23 +134,28 @@ func UnMarshal[T any](arr []string) ([]*T, []string, error) {
 
 func StructToString(s interface{}) string {
 	v := reflect.ValueOf(s)
+	t := reflect.TypeOf(s)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
+		t = t.Elem()
 	}
 	var arr []string
 	for i := 0; i < v.NumField(); i++ {
+		if t.Field(i).Anonymous {
+			arr = append(arr, StructToString(v.Field(i).Interface()))
+			continue
+		} else if v.Field(i).Kind() == reflect.Ptr {
+			if v.Field(i).IsNil() {
+				// 指针类型
+				arr = append(arr, "")
+			} else {
+				arr = append(arr, fmt.Sprint(v.Field(i).Elem().Interface()))
+			}
+			continue
+		}
 		arr = append(arr, fmt.Sprintf("%v", v.Field(i).Interface()))
 	}
 	return strings.Join(arr, ";")
-}
-
-func MarshalBytes(i any) [][]byte {
-	strs := Marshal(i)
-	ret := make([][]byte, len(strs))
-	for i, v := range strs {
-		ret[i] = utils.S2b(v)
-	}
-	return ret
 }
 
 func Marshal(i any) []string {
@@ -162,6 +208,7 @@ func MarshalValues(i any) []string {
 
 type Model interface {
 	TableName() string
+	PartitionKey() string
 }
 
 const (

@@ -18,7 +18,7 @@ type Stream struct {
 // SendToStream 发送数据到流，通过mq转发
 func (s *Stream) SendToStream(topic string) {
 	if utils.IsNil(s.streamMgr.writer) {
-		s.streamMgr.GetStream(topic).c <- s.buffs
+		s.streamMgr.GetStream(topic).sendBuffs(s.buffs...)
 		return
 	}
 	s.streamMgr.writer.Write(context.Background(), topic, s.buffs)
@@ -26,5 +26,12 @@ func (s *Stream) SendToStream(topic string) {
 
 func (s *Stream) SendMessage(a any) {
 	buff := Marshal(a)
-	s.c <- [][]byte{utils.S2b(buff[0])}
+	s.sendBuffs(utils.S2b(buff[0]))
+}
+
+func (s *Stream) sendBuffs(buff ...[]byte) {
+	if s == nil {
+		return
+	}
+	s.c <- buff
 }

@@ -38,4 +38,7 @@ func clientStream(stream *flows.Stream) {
 
 		return dailyData
 	}).SendToStream("user_daily")
+
+	// steam 是client流， 还可以继续处理
+	// ...
 }
