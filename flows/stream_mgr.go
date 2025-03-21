@@ -6,7 +6,7 @@ import (
 
 	"hj-flows/utils"
 
-	"github.com/go-pay/errgroup"
+	"golang.org/x/sync/errgroup"
 )
 
 type StreamMgr struct {
@@ -68,7 +68,7 @@ func (m *StreamMgr) GetStream(topic string) *Stream {
 // Start 启动所有的流
 func (m *StreamMgr) Start() {
 	for _, stream := range m.streams {
-		m.wg.Go(func(ctx context.Context) error {
+		m.wg.Go(func() error {
 			if utils.IsNil(stream.reader) {
 				return nil
 			}
@@ -81,7 +81,7 @@ func (m *StreamMgr) Start() {
 			}
 			return nil
 		})
-		m.wg.Go(func(ctx context.Context) error {
+		m.wg.Go(func() error {
 			for {
 				select {
 				case <-m.ctx.Done():

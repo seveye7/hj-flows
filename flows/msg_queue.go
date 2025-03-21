@@ -30,6 +30,7 @@ func NewKafkaWriter(ctx context.Context, config *KafkaConfig) Writer {
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP(config.Hosts...),
 		AllowAutoTopicCreation: true,
+		// RequiredAcks:           kafka.RequireAll,
 	}
 
 	kw := &KafkaWriter{
