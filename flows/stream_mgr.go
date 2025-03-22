@@ -15,6 +15,7 @@ type StreamMgr struct {
 	wg          errgroup.Group
 	cancel      func()
 	kafkaConfig *KafkaConfig
+	nsqConfig   *NsqConfig
 	writer      Writer
 }
 
@@ -29,10 +30,6 @@ func NewStreamMgr(options ...Option) *StreamMgr {
 		option(m)
 	}
 
-	if m.kafkaConfig != nil {
-		m.writer = NewKafkaWriter(ctx, m.kafkaConfig)
-	}
-
 	return m
 }
 
@@ -42,6 +39,14 @@ type Option func(*StreamMgr)
 func WithKafka(config *KafkaConfig) Option {
 	return func(m *StreamMgr) {
 		m.kafkaConfig = config
+		m.writer = NewKafkaWriter(m.ctx, m.kafkaConfig)
+	}
+}
+
+func WithNsq(config *NsqConfig) Option {
+	return func(m *StreamMgr) {
+		m.nsqConfig = config
+		m.writer = NewNsqWriter(m.ctx, m.nsqConfig)
 	}
 }
 
@@ -56,6 +61,8 @@ func WithTopic(gourpId, topic string, f func(*Stream)) Option {
 		s := &Stream{f: f, c: make(chan [][]byte, 128), streamMgr: m, gourpId: gourpId}
 		if m.kafkaConfig != nil {
 			s.reader = NewKafkaReader(m.kafkaConfig, gourpId, topic)
+		} else if m.nsqConfig != nil {
+			s.reader = NewNsqReader(m.nsqConfig, gourpId, topic)
 		}
 		m.streams[topic] = s
 	}

@@ -75,7 +75,7 @@ func (w *KafkaWriter) Write(ctx context.Context, topic string, bs [][]byte) {
 	}
 }
 
-type KafkReader struct {
+type KafkaReader struct {
 	Config *KafkaConfig
 	topic  string
 	reader *kafka.Reader
@@ -92,14 +92,14 @@ func NewKafkaReader(config *KafkaConfig, selfGourpId, topic string) Reader {
 		},
 		MaxBytes: 10e6, // 10MB
 	})
-	return &KafkReader{
+	return &KafkaReader{
 		Config: config,
 		topic:  topic,
 		reader: r,
 	}
 }
 
-func (r *KafkReader) Read(ctx context.Context) ([][]byte, error) {
+func (r *KafkaReader) Read(ctx context.Context) ([][]byte, error) {
 	m, err := r.reader.ReadMessage(ctx)
 	if err != nil {
 		return nil, err
